@@ -1,0 +1,75 @@
+# Network Intrusion Detection (NSL-KDD) - pipeline configuration
+
+data:
+  raw_dir: data/raw
+  # NSL-KDD is published by the Canadian Institute for Cybersecurity (UNB).
+  # The official download sits behind a form, so the files are fetched from
+  # public GitHub mirrors and verified against the SHA-256 digests below.
+  # Digests and row counts recorded 2026-11-17; the class counts in those
+  # files match the figures published with the dataset.
+  mirrors:
+    - https://raw.githubusercontent.com/defcom17/NSL_KDD/master
+    - https://raw.githubusercontent.com/jmnwong/NSL-KDD-Dataset/master
+  files:
+    train:
+      name: KDDTrain+.txt
+      rows: 125973
+      sha256: 1b86d2f957b33082081bba410fe129b475efebcc13c9014c3f447c8271aadf95
+    test:
+      name: KDDTest+.txt
+      rows: 22544
+      sha256: fa46b0935342616aa83b7c2578db355b6a7aaabbc492248172c7a1e8b7ab8f84
+    test_21:
+      name: KDDTest-21.txt
+      rows: 11850
+      sha256: 746993ac9e25868827cacf09eab450050a2a1056e1ce48a1ad39f5dc801d531d
+
+preprocess:
+  # Held out from KDDTrain+ (stratified by category) for early stopping and
+  # threshold calibration. The test sets are never used for any choice.
+  val_fraction: 0.2
+  random_state: 42
+
+# Alert threshold for every binary detector: the score above which a
+# connection is flagged. It is set so that at most this fraction of the
+# *validation* normal traffic is flagged, i.e. a target false-positive rate.
+# Test-set FPR is then measured, not assumed.
+target_fpr: 0.02
+
+isolation_forest:
+  n_estimators: 300
+  max_samples: 256
+  # Trained on normal traffic only (novelty detection): it never sees an
+  # attack label.
+  train_on_normal_only: true
+  random_state: 42
+
+xgboost:
+  n_estimators: 600
+  max_depth: 8
+  learning_rate: 0.1
+  subsample: 0.9
+  colsample_bytree: 0.8
+  early_stopping_rounds: 30
+  # Per-class sample weights: "balanced" (n / (k * count)), "sqrt_balanced"
+  # (its square root, gentler on the 52-row U2R class), or "none".
+  class_weighting: sqrt_balanced
+  random_state: 42
+
+lstm:
+  # NSL-KDD rows are independent connection summaries with no time order, so
+  # there is no real sequence to model. Each row is fed as a sequence of
+  # `timesteps` equal-sized feature chunks (zero-padded). See README.
+  timesteps: 1
+  units: [64, 32]
+  dropout: 0.3
+  epochs: 40
+  batch_size: 256
+  learning_rate: 0.001
+  early_stopping_patience: 5
+  class_weighting: sqrt_balanced
+  random_state: 42
+
+output:
+  dir: outputs
+  models_dir: outputs/models
